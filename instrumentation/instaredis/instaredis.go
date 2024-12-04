@@ -15,6 +15,25 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 )
 
+type contextKey struct{}
+
+var redisSpanKey contextKey
+
+// ContextWithSpan returns a new context.Context holding a reference to an active span
+func contextWithSpan(ctx context.Context, sp ot.Span) context.Context {
+	return context.WithValue(ctx, redisSpanKey, sp)
+}
+
+// SpanFromContext retrieves previously stored active span from context. If there is no
+// span, this method returns false.
+func spanFromContext(ctx context.Context) (ot.Span, bool) {
+	sp, ok := ctx.Value(redisSpanKey).(ot.Span)
+	if !ok {
+		return nil, false
+	}
+	return sp, true
+}
+
 type commandCaptureHook struct {
 	options        *redis.Options
 	clusterOptions *redis.ClusterOptions
@@ -97,7 +116,7 @@ func (h commandCaptureHook) getConnection(ctx context.Context) string {
 	return ""
 }
 
-func (h commandCaptureHook) handleHook(ctx context.Context, cmd redis.Cmder, cmds []redis.Cmder) {
+func (h commandCaptureHook) handleHook(ctx context.Context, cmd redis.Cmder, cmds []redis.Cmder) context.Context {
 	connection := h.getConnection(ctx)
 
 	// if the IP provided in the Redis constructor have only ports. eg: :6379, :6380 and so on, we add localhost
@@ -113,7 +132,7 @@ func (h commandCaptureHook) handleHook(ctx context.Context, cmd redis.Cmder, cmd
 
 	// We need an entry parent span in order to test this, so we will need a webserver or manually create an entry span
 	tracer := h.sensor.Tracer()
-	var span ot.Span = tracer.StartSpan("redis", opts...)
+	var span = tracer.StartSpan("redis", opts...)
 
 	if ps, ok := instana.SpanFromContext(ctx); ok {
 		tracer = ps.Tracer()
@@ -123,15 +142,17 @@ func (h commandCaptureHook) handleHook(ctx context.Context, cmd redis.Cmder, cmd
 
 	setSpanCommands(span, cmd, cmds)
 
-	span.Finish()
+	return contextWithSpan(ctx, span)
 }
 
 func (h commandCaptureHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
-	return ctx, nil
+	return h.handleHook(ctx, cmd, []redis.Cmder{}), nil
 }
 
 func (h commandCaptureHook) AfterProcess(ctx context.Context, cmd redis.Cmder) error {
-	h.handleHook(ctx, cmd, []redis.Cmder{})
+	if span, ok := spanFromContext(ctx); ok {
+		span.Finish()
+	}
 	return nil
 }
 

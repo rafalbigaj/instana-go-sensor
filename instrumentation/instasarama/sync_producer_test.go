@@ -7,7 +7,6 @@ package instasarama_test
 
 import (
 	"errors"
-	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -20,91 +19,81 @@ import (
 )
 
 func TestSyncProducer_SendMessage(t *testing.T) {
-	headerFormats := []string{"" /* tests the default behavior */, "binary", "string", "both"}
 
-	for _, headerFormat := range headerFormats {
-		os.Setenv(instasarama.KafkaHeaderEnvVarKey, headerFormat)
-		recorder := instana.NewTestRecorder()
-		sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
-
-		parent := sensor.Tracer().StartSpan("test-span")
-
-		config := sarama.NewConfig()
-		config.Version = sarama.V0_11_0_0
-		config.Producer.Return.Successes = true
-
-		p := &testSyncProducer{}
-		wrapped := instasarama.WrapSyncProducer(p, config, sensor)
-
-		_, _, err := wrapped.SendMessage(
-			instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic"}, parent),
-		)
-		require.NoError(t, err)
-
-		parent.Finish()
-
-		spans := recorder.GetQueuedSpans()
-		require.Len(t, spans, 2)
-
-		pSpan, err := extractAgentSpan(spans[1])
-		require.NoError(t, err)
-
-		cSpan, err := extractAgentSpan(spans[0])
-		require.NoError(t, err)
-
-		assert.Equal(t, 0, cSpan.Ec)
-		assert.EqualValues(t, instana.ExitSpanKind, cSpan.Kind)
-
-		assert.Equal(t, agentKafkaSpanData{
-			Service: "test-topic",
-			Access:  "send",
-		}, cSpan.Data.Kafka)
-
-		require.Len(t, p.Messages, 1)
-
-		if headerFormat == "both" || headerFormat == "binary" || headerFormat == "" /* -> default, currently both */ {
-			assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
-				Key:   []byte("X_INSTANA_C"),
-				Value: instasarama.PackTraceContextHeader(cSpan.TraceID, cSpan.SpanID),
-			})
-			assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
-				Key:   []byte("X_INSTANA_L"),
-				Value: instasarama.PackTraceLevelHeader("1"),
-			})
-		}
-
-		if headerFormat == "both" || headerFormat == "string" || headerFormat == "" /* -> default, currently both */ {
-			assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
-				Key:   []byte(instasarama.FieldLS),
-				Value: []byte("1"),
-			})
-			assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
-				Key:   []byte(instasarama.FieldT),
-				Value: []byte("0000000000000000" + cSpan.TraceID),
-			})
-			assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
-				Key:   []byte(instasarama.FieldS),
-				Value: []byte(cSpan.SpanID),
-			})
-		}
-
-		assert.Equal(t, pSpan.TraceID, cSpan.TraceID)
-		assert.Equal(t, pSpan.SpanID, cSpan.ParentID)
-		assert.NotEqual(t, pSpan.SpanID, cSpan.SpanID)
-		os.Unsetenv(instasarama.KafkaHeaderEnvVarKey)
-	}
-}
-
-func TestSyncProducer_SendMessage_NoTraceContext(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	parent := c.Tracer().StartSpan("test-span")
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V0_11_0_0
 	config.Producer.Return.Successes = true
 
 	p := &testSyncProducer{}
-	wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
+
+	_, _, err := wrapped.SendMessage(
+		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic"}, parent),
+	)
+	require.NoError(t, err)
+
+	parent.Finish()
+
+	spans := recorder.GetQueuedSpans()
+	require.Len(t, spans, 2)
+
+	pSpan, err := extractAgentSpan(spans[1])
+	require.NoError(t, err)
+
+	cSpan, err := extractAgentSpan(spans[0])
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, cSpan.Ec)
+	assert.EqualValues(t, instana.ExitSpanKind, cSpan.Kind)
+
+	assert.Equal(t, agentKafkaSpanData{
+		Service: "test-topic",
+		Access:  "send",
+	}, cSpan.Data.Kafka)
+
+	require.Len(t, p.Messages, 1)
+
+	assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
+		Key:   []byte(instasarama.FieldLS),
+		Value: []byte("1"),
+	})
+	assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
+		Key:   []byte(instasarama.FieldT),
+		Value: []byte("0000000000000000" + cSpan.TraceID),
+	})
+	assert.Contains(t, p.Messages[0].Headers, sarama.RecordHeader{
+		Key:   []byte(instasarama.FieldS),
+		Value: []byte(cSpan.SpanID),
+	})
+
+	assert.Equal(t, pSpan.TraceID, cSpan.TraceID)
+	assert.Equal(t, pSpan.SpanID, cSpan.ParentID)
+	assert.NotEqual(t, pSpan.SpanID, cSpan.SpanID)
+}
+
+func TestSyncProducer_SendMessage_NoTraceContext(t *testing.T) {
+	recorder := instana.NewTestRecorder()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	config := sarama.NewConfig()
+	config.Version = sarama.V0_11_0_0
+	config.Producer.Return.Successes = true
+
+	p := &testSyncProducer{}
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 
 	_, _, err := wrapped.SendMessage(&sarama.ProducerMessage{
 		Topic: "test-topic",
@@ -120,7 +109,11 @@ func TestSyncProducer_SendMessage_NoTraceContext(t *testing.T) {
 
 func TestSyncProducer_SendMessage_Error(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V0_11_0_0
@@ -129,9 +122,9 @@ func TestSyncProducer_SendMessage_Error(t *testing.T) {
 	p := &testSyncProducer{
 		Error: errors.New("something went wrong"),
 	}
-	wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 
-	parent := sensor.Tracer().StartSpan("test-span")
+	parent := c.Tracer().StartSpan("test-span")
 	_, _, err := wrapped.SendMessage(
 		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic"}, parent),
 	)
@@ -155,93 +148,84 @@ func TestSyncProducer_SendMessage_Error(t *testing.T) {
 }
 
 func TestSyncProducer_SendMessages_SameTraceContext(t *testing.T) {
-	for _, headerFormat := range headerFormats {
-		os.Setenv(instasarama.KafkaHeaderEnvVarKey, headerFormat)
+	recorder := instana.NewTestRecorder()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
-		recorder := instana.NewTestRecorder()
-		sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	config := sarama.NewConfig()
+	config.Version = sarama.V0_11_0_0
+	config.Producer.Return.Successes = true
 
-		config := sarama.NewConfig()
-		config.Version = sarama.V0_11_0_0
-		config.Producer.Return.Successes = true
+	p := &testSyncProducer{}
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 
-		p := &testSyncProducer{}
-		wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	parent := c.Tracer().StartSpan("test-span")
+	require.NoError(t, wrapped.SendMessages([]*sarama.ProducerMessage{
+		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-1"}, parent),
+		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-2"}, parent),
+	}))
+	parent.Finish()
 
-		parent := sensor.Tracer().StartSpan("test-span")
-		require.NoError(t, wrapped.SendMessages([]*sarama.ProducerMessage{
-			instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-1"}, parent),
-			instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-2"}, parent),
-		}))
-		parent.Finish()
+	spans := recorder.GetQueuedSpans()
+	require.Len(t, spans, 2)
 
-		spans := recorder.GetQueuedSpans()
-		require.Len(t, spans, 2)
+	pSpan, err := extractAgentSpan(spans[1])
+	require.NoError(t, err)
 
-		pSpan, err := extractAgentSpan(spans[1])
-		require.NoError(t, err)
+	cSpan, err := extractAgentSpan(spans[0])
+	require.NoError(t, err)
 
-		cSpan, err := extractAgentSpan(spans[0])
-		require.NoError(t, err)
+	assert.Equal(t, 0, cSpan.Ec)
+	assert.EqualValues(t, instana.ExitSpanKind, cSpan.Kind)
+	assert.Equal(t, 2, cSpan.Batch.Size)
 
-		assert.Equal(t, 0, cSpan.Ec)
-		assert.EqualValues(t, instana.ExitSpanKind, cSpan.Kind)
-		assert.Equal(t, 2, cSpan.Batch.Size)
+	// sort comma-separated list of topics for comparison
+	topics := strings.Split(cSpan.Data.Kafka.Service, ",")
+	sort.Strings(topics)
+	cSpan.Data.Kafka.Service = strings.Join(topics, ",")
 
-		// sort comma-separated list of topics for comparison
-		topics := strings.Split(cSpan.Data.Kafka.Service, ",")
-		sort.Strings(topics)
-		cSpan.Data.Kafka.Service = strings.Join(topics, ",")
+	assert.Equal(t, agentKafkaSpanData{
+		Service: "test-topic-1,test-topic-2",
+		Access:  "send",
+	}, cSpan.Data.Kafka)
 
-		assert.Equal(t, agentKafkaSpanData{
-			Service: "test-topic-1,test-topic-2",
-			Access:  "send",
-		}, cSpan.Data.Kafka)
+	require.Len(t, p.Messages, 2)
+	for _, msg := range p.Messages {
 
-		require.Len(t, p.Messages, 2)
-		for _, msg := range p.Messages {
-			if headerFormat == "both" || headerFormat == "binary" || headerFormat == "" /* -> default, currently both */ {
-				assert.Contains(t, msg.Headers, sarama.RecordHeader{
-					Key:   []byte("X_INSTANA_C"),
-					Value: instasarama.PackTraceContextHeader(cSpan.TraceID, cSpan.SpanID),
-				})
-				assert.Contains(t, msg.Headers, sarama.RecordHeader{
-					Key:   []byte("X_INSTANA_L"),
-					Value: instasarama.PackTraceLevelHeader("1"),
-				})
-			}
-
-			if headerFormat == "both" || headerFormat == "string" || headerFormat == "" /* -> default, currently both */ {
-				assert.Contains(t, msg.Headers, sarama.RecordHeader{
-					Key:   []byte(instasarama.FieldLS),
-					Value: []byte("1"),
-				})
-				assert.Contains(t, msg.Headers, sarama.RecordHeader{
-					Key:   []byte(instasarama.FieldT),
-					Value: []byte("0000000000000000" + cSpan.TraceID),
-				})
-				assert.Contains(t, msg.Headers, sarama.RecordHeader{
-					Key:   []byte(instasarama.FieldS),
-					Value: []byte(cSpan.SpanID),
-				})
-			}
-		}
-
-		assert.Equal(t, pSpan.TraceID, cSpan.TraceID)
-		assert.Equal(t, pSpan.SpanID, cSpan.ParentID)
-		assert.NotEqual(t, pSpan.SpanID, cSpan.SpanID)
-		os.Unsetenv(instasarama.KafkaHeaderEnvVarKey)
+		assert.Contains(t, msg.Headers, sarama.RecordHeader{
+			Key:   []byte(instasarama.FieldLS),
+			Value: []byte("1"),
+		})
+		assert.Contains(t, msg.Headers, sarama.RecordHeader{
+			Key:   []byte(instasarama.FieldT),
+			Value: []byte("0000000000000000" + cSpan.TraceID),
+		})
+		assert.Contains(t, msg.Headers, sarama.RecordHeader{
+			Key:   []byte(instasarama.FieldS),
+			Value: []byte(cSpan.SpanID),
+		})
 	}
+
+	assert.Equal(t, pSpan.TraceID, cSpan.TraceID)
+	assert.Equal(t, pSpan.SpanID, cSpan.ParentID)
+	assert.NotEqual(t, pSpan.SpanID, cSpan.SpanID)
 }
 
 func TestSyncProducer_SendMessages_DifferentTraceContext(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
-	parentOne := sensor.Tracer().StartSpan("test-span")
+	parentOne := c.Tracer().StartSpan("test-span")
 	defer parentOne.Finish()
 
-	parentTwo := sensor.Tracer().StartSpan("test-span")
+	parentTwo := c.Tracer().StartSpan("test-span")
 	defer parentTwo.Finish()
 
 	examples := map[string][]*sarama.ProducerMessage{
@@ -262,7 +246,7 @@ func TestSyncProducer_SendMessages_DifferentTraceContext(t *testing.T) {
 			config.Producer.Return.Successes = true
 
 			p := &testSyncProducer{}
-			wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+			wrapped := instasarama.WrapSyncProducer(p, config, c)
 
 			require.NoError(t, wrapped.SendMessages(messages))
 
@@ -274,14 +258,18 @@ func TestSyncProducer_SendMessages_DifferentTraceContext(t *testing.T) {
 
 func TestSyncProducer_SendMessages_NoTraceContext(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V0_11_0_0
 	config.Producer.Return.Successes = true
 
 	p := &testSyncProducer{}
-	wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 
 	require.NoError(t, wrapped.SendMessages([]*sarama.ProducerMessage{
 		{Topic: "test-topic-1"},
@@ -298,7 +286,11 @@ func TestSyncProducer_SendMessages_NoTraceContext(t *testing.T) {
 
 func TestSyncProducer_SendMessages_Error(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V0_11_0_0
@@ -307,9 +299,9 @@ func TestSyncProducer_SendMessages_Error(t *testing.T) {
 	p := &testSyncProducer{
 		Error: errors.New("something went wrong"),
 	}
-	wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 
-	parent := sensor.Tracer().StartSpan("test-span")
+	parent := c.Tracer().StartSpan("test-span")
 	assert.Error(t, wrapped.SendMessages([]*sarama.ProducerMessage{
 		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-1"}, parent),
 		instasarama.ProducerMessageWithSpan(&sarama.ProducerMessage{Topic: "test-topic-2"}, parent),
@@ -339,14 +331,18 @@ func TestSyncProducer_SendMessages_Error(t *testing.T) {
 
 func TestSyncProducer_Close(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V0_11_0_0
 	config.Producer.Return.Successes = true
 
 	p := &testSyncProducer{}
-	wrapped := instasarama.WrapSyncProducer(p, config, sensor)
+	wrapped := instasarama.WrapSyncProducer(p, config, c)
 	wrapped.Close()
 
 	assert.True(t, p.Closed)

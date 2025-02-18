@@ -19,7 +19,7 @@ $ go get github.com/instana/go-sensor/instrumentation/instagraphql
 Usage
 -----
 
-A complete working example can be found [here](example).
+A complete working example can be found [here](../../example/graphql).
 
 `instagraphql` offers the following method wrappers able to collect GraphQL query data:
 
@@ -30,8 +30,10 @@ A complete working example can be found [here](example).
 ### `instagraphql.Do` usage example
 
 ```go
-// create an instance of the Instana sensor
-sensor := instana.NewSensor("go-graphql")
+// create an instance of the Instana collector
+collector := instana.InitCollector(&instana.Options{
+  Service: "graphql-app",
+})
 
 // setup GraphQL normally
 ...
@@ -56,8 +58,10 @@ fmt.Println("do something with the result", r)
 ### `instagraphql.Subscribe` usage example
 
 ```go
-// create an instance of the Instana sensor
-sensor := instana.NewSensor("go-graphql")
+// create an instance of the Instana collector
+collector := instana.InitCollector(&instana.Options{
+  Service: "graphql-app",
+})
 
 ...
 
@@ -80,8 +84,10 @@ The `instagraphql.ResultCallbackFn` depends on the [handler.ResultCallbackFn](ht
 
 
 ```go
-// create an instance of the Instana sensor
-sensor := instana.NewSensor("go-graphql")
+// create an instance of the Instana collector
+collector := instana.InitCollector(&instana.Options{
+  Service: "graphql-app",
+})
 
 h := handler.New(&handler.Config{
   Schema:           &schema,
@@ -89,7 +95,7 @@ h := handler.New(&handler.Config{
   GraphiQL:         false,
   Playground:       true,
   // The second argument is your previous provided callback function, or nil if you had none.
-  ResultCallbackFn: instagraphql.ResultCallbackFn(sensor, nil),
+  ResultCallbackFn: instagraphql.ResultCallbackFn(collector, nil),
 })
 
 http.Handle("/graphql", h)
@@ -105,3 +111,4 @@ See the [`instagraphql` package documentation][godoc] for detailed examples.
 [instagraphql.Do]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instagraphql#Do
 [instagraphql.Subscribe]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instagraphql#Subscribe
 [instagraphql.ResultCallbackFn]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instagraphql#ResultCallbackFn
+

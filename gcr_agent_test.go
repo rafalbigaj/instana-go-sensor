@@ -7,6 +7,7 @@
 package instana_test
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -50,12 +51,13 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to initialize serverless agent: %s", err)
 	}
 
-	instana.InitSensor(instana.DefaultOptions())
+	instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
 	os.Exit(m.Run())
 }
 
-func TestGCRAgent_SendMetrics(t *testing.T) {
+func TestIntegration_GCRAgent_SendMetrics(t *testing.T) {
 	defer agent.Reset()
 
 	require.Eventually(t, func() bool { return len(agent.Bundles) > 0 }, 2*time.Second, 500*time.Millisecond)
@@ -134,12 +136,13 @@ func TestGCRAgent_SendMetrics(t *testing.T) {
 	})
 }
 
-func TestGCRAgent_SendSpans(t *testing.T) {
+func TestIntegration_GCRAgent_SendSpans(t *testing.T) {
 	defer agent.Reset()
 
-	sensor := instana.NewSensor("testing")
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
-	sp := sensor.Tracer().StartSpan("entry")
+	sp := c.Tracer().StartSpan("entry")
 	sp.SetTag("value", "42")
 	sp.Finish()
 
@@ -174,6 +177,22 @@ func TestGCRAgent_SendSpans(t *testing.T) {
 
 	require.Len(t, spans, 1)
 	assert.JSONEq(t, `{"hl": true, "cp": "gcp", "e": "id1"}`, string(spans[0]["f"]))
+}
+
+func TestIntegration_GCRAgent_FlushSpans(t *testing.T) {
+	defer agent.Reset()
+
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
+
+	sp := c.Tracer().StartSpan("entry")
+	sp.SetTag("value", "42")
+	sp.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, c.Flush(ctx))
 }
 
 func setupGCREnv() func() {

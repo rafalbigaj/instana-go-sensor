@@ -1,9 +1,6 @@
 // (c) Copyright IBM Corp. 2021
 // (c) Copyright Instana Inc. 2020
 
-//go:build go1.19
-// +build go1.19
-
 package pubsub_test
 
 import (
@@ -18,11 +15,14 @@ import (
 // This example show how to instrument and HTTP handler that receives Google Cloud Pub/Sub messages
 // via the push delivery method.
 func ExampleTracingHandlerFunc() {
-	// Initialize sensor
-	sensor := instana.NewSensor("pubsub-consumer")
+	// Initialize collector
+	c := instana.InitCollector(&instana.Options{
+		Service: "pubsub-consumer",
+	})
+	defer instana.ShutdownCollector()
 
 	// Wrap your Pub/Sub message handler with pubsub.TracingHandlerFunc
-	http.Handle("/", pubsub.TracingHandlerFunc(sensor, "/", func(w http.ResponseWriter, req *http.Request) {
+	http.Handle("/", pubsub.TracingHandlerFunc(c, "/", func(w http.ResponseWriter, req *http.Request) {
 		var delivery struct {
 			Message struct {
 				Data []byte `json:"data"`

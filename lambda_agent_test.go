@@ -47,18 +47,19 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to initialize serverless agent: %s", err)
 	}
 
-	instana.InitSensor(instana.DefaultOptions())
+	instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
 	os.Exit(m.Run())
 }
 
-func TestLambdaAgent_SendSpans(t *testing.T) {
+func TestIntegration_LambdaAgent_SendSpans(t *testing.T) {
 	defer agent.Reset()
 
-	tracer := instana.NewTracer()
-	sensor := instana.NewSensorWithTracer(tracer)
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
-	sp := sensor.Tracer().StartSpan("aws.lambda.entry", opentracing.Tags{
+	sp := c.Tracer().StartSpan("aws.lambda.entry", opentracing.Tags{
 		"lambda.arn":     "aws::test-lambda::$LATEST",
 		"lambda.name":    "test-lambda",
 		"lambda.version": "$LATEST",
@@ -68,7 +69,7 @@ func TestLambdaAgent_SendSpans(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	require.NoError(t, tracer.Flush(ctx))
+	require.NoError(t, c.Flush(ctx))
 	require.Len(t, agent.Bundles, 1)
 
 	var spans []map[string]json.RawMessage
@@ -83,6 +84,27 @@ func TestLambdaAgent_SendSpans(t *testing.T) {
 
 	require.Len(t, spans, 1)
 	assert.JSONEq(t, `{"hl": true, "cp": "aws", "e": "aws::test-lambda::$LATEST"}`, string(spans[0]["f"]))
+}
+
+func TestIntegration_LambdaAgent_SendSpans_Error(t *testing.T) {
+	defer agent.Reset()
+
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
+
+	sp := c.Tracer().StartSpan("aws.lambda.entry", opentracing.Tags{
+		"lambda.arn":     "aws::test-lambda::$LATEST",
+		"lambda.name":    "test-lambda",
+		"lambda.version": "$LATEST",
+		"lambda.error":   "true",
+	})
+	sp.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, c.Flush(ctx))
+	require.Len(t, agent.Bundles, 0)
 }
 
 func setupAWSLambdaEnv() func() {

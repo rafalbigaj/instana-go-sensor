@@ -19,7 +19,11 @@ import (
 
 func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	messages := []*sarama.ConsumerMessage{
 		{
@@ -34,22 +38,25 @@ func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 					Value: []byte("00000000deadbeef"),
 				},
 				{Key: []byte("x_instana_l_s"), Value: []byte("1")},
+			},
+		},
+		{Topic: "topic-2"},
+		{
+			Topic: "topic-3",
+			Headers: []*sarama.RecordHeader{
 				{
-					// We deliberately send a different trace and span id in the binary header as in the string header to validate
-					// that the string headers get preference when both formats are present in the incoming message.
 					Key: []byte("x_instana_c"),
 					Value: []byte{
 						// trace id
 						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+						0x00, 0x00, 0x00, 0x00, 0x0a, 0xbc, 0xde, 0x12,
 						// span id
-						0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
+						0x00, 0x00, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef,
 					},
 				},
 				{Key: []byte("x_instana_l"), Value: []byte{0x01}},
 			},
 		},
-		{Topic: "topic-2"},
 	}
 
 	claim := &testConsumerGroupClaim{
@@ -63,7 +70,7 @@ func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 	sess := &testConsumerGroupSession{}
 
 	h := &testConsumerGroupHandler{}
-	wrapped := instasarama.WrapConsumerGroupHandler(h, sensor)
+	wrapped := instasarama.WrapConsumerGroupHandler(h, c)
 
 	require.NoError(t, wrapped.ConsumeClaim(sess, claim))
 
@@ -71,7 +78,7 @@ func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 	assert.Equal(t, h.Messages, sess.Messages) // all messages are marked
 
 	spans := recorder.GetQueuedSpans()
-	require.Len(t, spans, 2)
+	require.Len(t, spans, 3)
 
 	t.Run("span for message with trace headers", func(t *testing.T) {
 		span, err := extractAgentSpan(spans[0])
@@ -100,14 +107,6 @@ func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 		assert.Contains(t, h.Messages[0].Headers, &sarama.RecordHeader{
 			Key:   []byte("x_instana_l_s"),
 			Value: []byte("1"),
-		})
-		assert.Contains(t, h.Messages[0].Headers, &sarama.RecordHeader{
-			Key:   []byte("x_instana_c"),
-			Value: instasarama.PackTraceContextHeader(span.TraceID, span.SpanID),
-		})
-		assert.Contains(t, h.Messages[0].Headers, &sarama.RecordHeader{
-			Key:   []byte("x_instana_l"),
-			Value: instasarama.PackTraceLevelHeader("1"),
 		})
 	})
 
@@ -139,23 +138,52 @@ func TestConsumerGroupHandler_ConsumeClaim(t *testing.T) {
 			Key:   []byte("X_INSTANA_L_S"),
 			Value: []byte("1"),
 		})
-		assert.Contains(t, h.Messages[1].Headers, &sarama.RecordHeader{
-			Key:   []byte("X_INSTANA_C"),
-			Value: instasarama.PackTraceContextHeader(span.TraceID, span.SpanID),
+	})
+
+	t.Run("span for message with binary trace headers", func(t *testing.T) {
+		// Binary headers are no longer supported.
+		// The expected behavior, in the absence of string headers, should match the behavior observed when there are no trace headers at all.
+		span, err := extractAgentSpan(spans[2])
+		require.NoError(t, err)
+
+		// Verify that the processed trace and parent IDs do not match the values passed in the headers (since they were binary headers).
+		assert.NotEqualValues(t, "000000000abcde12", span.TraceID)
+		assert.NotEqualValues(t, "00000000deadbeef", span.ParentID)
+		assert.EqualValues(t, span.TraceID, span.SpanID)
+
+		assert.Equal(t, span.Name, "kafka")
+		assert.EqualValues(t, span.Kind, instana.EntrySpanKind)
+
+		assert.Equal(t, agentKafkaSpanData{
+			Service: "topic-3",
+			Access:  "consume",
+		}, span.Data.Kafka)
+
+		assert.Contains(t, h.Messages[2].Headers, &sarama.RecordHeader{
+			Key:   []byte("X_INSTANA_T"),
+			Value: []byte(span.TraceID),
 		})
-		assert.Contains(t, h.Messages[1].Headers, &sarama.RecordHeader{
-			Key:   []byte("X_INSTANA_L"),
-			Value: instasarama.PackTraceLevelHeader("1"),
+		assert.Contains(t, h.Messages[2].Headers, &sarama.RecordHeader{
+			Key:   []byte("X_INSTANA_S"),
+			Value: []byte(span.SpanID),
+		})
+		assert.Contains(t, h.Messages[2].Headers, &sarama.RecordHeader{
+			Key:   []byte("X_INSTANA_L_S"),
+			Value: []byte("1"),
 		})
 	})
 }
 
 func TestConsumerGroupHandler_Setup(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	h := &testConsumerGroupHandler{}
-	wrapped := instasarama.WrapConsumerGroupHandler(h, sensor)
+	wrapped := instasarama.WrapConsumerGroupHandler(h, c)
 
 	require.NoError(t, wrapped.Setup(&testConsumerGroupSession{}))
 	assert.True(t, h.SetupCalled)
@@ -165,12 +193,16 @@ func TestConsumerGroupHandler_Setup(t *testing.T) {
 
 func TestConsumerGroupHandler_Setup_Error(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	h := &testConsumerGroupHandler{
 		Error: errors.New("something went wrong"),
 	}
-	wrapped := instasarama.WrapConsumerGroupHandler(h, sensor)
+	wrapped := instasarama.WrapConsumerGroupHandler(h, c)
 
 	assert.Error(t, wrapped.Setup(&testConsumerGroupSession{}))
 
@@ -179,10 +211,14 @@ func TestConsumerGroupHandler_Setup_Error(t *testing.T) {
 
 func TestConsumerGroupHandler_Cleanup(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	h := &testConsumerGroupHandler{}
-	wrapped := instasarama.WrapConsumerGroupHandler(h, sensor)
+	wrapped := instasarama.WrapConsumerGroupHandler(h, c)
 
 	require.NoError(t, wrapped.Cleanup(&testConsumerGroupSession{}))
 	assert.True(t, h.CleanupCalled)
@@ -192,12 +228,16 @@ func TestConsumerGroupHandler_Cleanup(t *testing.T) {
 
 func TestConsumerGroupHandler_Cleanup_Error(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{}, recorder))
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	h := &testConsumerGroupHandler{
 		Error: errors.New("something went wrong"),
 	}
-	wrapped := instasarama.WrapConsumerGroupHandler(h, sensor)
+	wrapped := instasarama.WrapConsumerGroupHandler(h, c)
 
 	assert.Error(t, wrapped.Cleanup(&testConsumerGroupSession{}))
 

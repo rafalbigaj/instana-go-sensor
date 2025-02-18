@@ -16,6 +16,25 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type contextKey struct{}
+
+var redisSpanKey contextKey
+
+// ContextWithSpan returns a new context.Context holding a reference to an active span
+func contextWithSpan(ctx context.Context, sp ot.Span) context.Context {
+	return context.WithValue(ctx, redisSpanKey, sp)
+}
+
+// SpanFromContext retrieves previously stored active span from context. If there is no
+// span, this method returns false.
+func spanFromContext(ctx context.Context) (ot.Span, bool) {
+	sp, ok := ctx.Value(redisSpanKey).(ot.Span)
+	if !ok {
+		return nil, false
+	}
+	return sp, true
+}
+
 type commandCaptureHook struct {
 	options        *redis.Options
 	clusterOptions *redis.ClusterOptions
@@ -95,7 +114,7 @@ func (h commandCaptureHook) getConnection(ctx context.Context) string {
 	return ""
 }
 
-func (h commandCaptureHook) instrument(ctx context.Context, cmd redis.Cmder, cmds []redis.Cmder) ot.Span {
+func (h commandCaptureHook) instrument(ctx context.Context, cmd redis.Cmder, cmds []redis.Cmder) context.Context {
 	connection := h.getConnection(ctx)
 
 	// if the IP provided in the Redis constructor have only ports. eg: :6379, :6380 and so on, we add localhost
@@ -121,7 +140,7 @@ func (h commandCaptureHook) instrument(ctx context.Context, cmd redis.Cmder, cmd
 
 	setSpanCommands(span, cmd, cmds)
 
-	return span
+	return contextWithSpan(ctx, span)
 }
 
 type InstanaRedisClient interface {
@@ -141,11 +160,18 @@ func (h commandCaptureHook) DialHook(next redis.DialHook) redis.DialHook {
 func (h commandCaptureHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
 		// create span
-		span := h.instrument(ctx, cmd, []redis.Cmder{})
-		defer span.Finish()
+		ctx = h.instrument(ctx, cmd, []redis.Cmder{})
+		span, ok := spanFromContext(ctx)
+		defer func() {
+			if ok {
+				span.Finish()
+			}
+		}()
 		err := next(ctx, cmd)
 		// record error to span
-		handleError(span, err)
+		if ok {
+			handleError(span, err)
+		}
 		return err
 	}
 }
@@ -154,11 +180,18 @@ func (h commandCaptureHook) ProcessHook(next redis.ProcessHook) redis.ProcessHoo
 func (h commandCaptureHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
 	return func(ctx context.Context, cmds []redis.Cmder) error {
 		// create span
-		span := h.instrument(ctx, nil, cmds)
-		defer span.Finish()
+		ctx = h.instrument(ctx, nil, cmds)
+		span, ok := spanFromContext(ctx)
+		defer func() {
+			if ok {
+				span.Finish()
+			}
+		}()
 		err := next(ctx, cmds)
 		// record error to span
-		handleError(span, err)
+		if ok {
+			handleError(span, err)
+		}
 		return err
 	}
 }

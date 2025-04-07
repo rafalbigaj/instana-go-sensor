@@ -9,16 +9,23 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 )
 
+// Queryer is deprecated since Go v1.8
+
 type wQueryer struct {
 	driver.Queryer
-	connDetails DbConnDetails
-	sensor      TracerLogger
+	sensor TracerLogger
+
+	sqlSpan *sqlSpanData
 }
 
 func (conn *wQueryer) Query(query string, args []driver.Value) (driver.Rows, error) {
 	ctx := context.Background()
 
-	sp, dbKey := startSQLSpan(ctx, conn.connDetails, query, conn.sensor)
+	// Since the query is not a constant value like database connection details,
+	// it needs to be updated in the sqlSpanData instance with the current value.
+	conn.sqlSpan.updateDBQuery(query)
+
+	sp, dbKey := conn.sqlSpan.start(ctx, conn.sensor)
 	defer sp.Finish()
 
 	res, err := conn.Queryer.Query(query, args)

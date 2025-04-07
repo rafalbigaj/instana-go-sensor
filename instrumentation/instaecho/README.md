@@ -18,11 +18,13 @@ Usage
 -----
 
 ```go
-// create a sensor
-sensor := instana.NewSensor("echo-sensor")
+// create an instana collector
+collector := instana.InitCollector(&instana.Options{
+    Service: "echo-app",
+})
 
 // init instrumented Echo
-e := instaecho.New(sensor)
+e := instaecho.New(collector)
 
 // define API
 e.GET("/foo", func(c echo.Context) error { /* ... */ })
@@ -33,3 +35,4 @@ e.GET("/foo", func(c echo.Context) error { /* ... */ })
 
 [godoc]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaecho
 [fullExample]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaecho#example-package
+

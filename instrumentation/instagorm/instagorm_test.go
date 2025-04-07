@@ -1,7 +1,7 @@
 // (c) Copyright IBM Corp. 2023
 
-//go:build go1.16
-// +build go1.16
+//go:build go1.18
+// +build go1.18
 
 package instagorm_test
 
@@ -32,6 +32,7 @@ const (
 	SELECT  = "SELECT * FROM `products` WHERE code = ? AND `products`.`deleted_at` IS NULL ORDER BY `products`.`id` LIMIT 1"
 	RAWSQL  = "SELECT * FROM products"
 	DB_TYPE = "sqlite"
+	ROW     = "SELECT code,price FROM `product` WHERE code = ?"
 )
 
 type product struct {
@@ -42,11 +43,18 @@ type product struct {
 
 func TestInsertRecord(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	s := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{
+	c := instana.InitCollector(&instana.Options{
 		Service:     "go-sensor-test",
 		AgentClient: alwaysReadyClient{},
-	}, recorder))
-	defer instana.ShutdownSensor()
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	t.Run("Exec", func(t *testing.T) {
 		dsn, tearDownFn := setupEnv(t)
@@ -57,7 +65,8 @@ func TestInsertRecord(t *testing.T) {
 			panic("failed to connect database")
 		}
 
-		instagorm.Instrument(db, s, dsn)
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
 
 		if err = db.AutoMigrate(&product{}); err != nil {
 			panic("failed to migrate the schema")
@@ -94,11 +103,18 @@ func TestInsertRecord(t *testing.T) {
 
 func TestUpdateRecord(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	s := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{
+	c := instana.InitCollector(&instana.Options{
 		Service:     "go-sensor-test",
 		AgentClient: alwaysReadyClient{},
-	}, recorder))
-	defer instana.ShutdownSensor()
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	t.Run("Exec", func(t *testing.T) {
 		dsn, tearDownFn := setupEnv(t)
@@ -109,7 +125,8 @@ func TestUpdateRecord(t *testing.T) {
 			panic("failed to connect database")
 		}
 
-		instagorm.Instrument(db, s, dsn)
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
 
 		if err = db.AutoMigrate(&product{}); err != nil {
 			panic("failed to migrate the schema")
@@ -151,11 +168,18 @@ func TestUpdateRecord(t *testing.T) {
 
 func TestSelectRecord(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	s := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{
+	c := instana.InitCollector(&instana.Options{
 		Service:     "go-sensor-test",
 		AgentClient: alwaysReadyClient{},
-	}, recorder))
-	defer instana.ShutdownSensor()
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	t.Run("Exec", func(t *testing.T) {
 		dsn, tearDownFn := setupEnv(t)
@@ -166,7 +190,8 @@ func TestSelectRecord(t *testing.T) {
 			panic("failed to connect database")
 		}
 
-		instagorm.Instrument(db, s, dsn)
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
 
 		if err = db.AutoMigrate(&product{}); err != nil {
 			panic("failed to migrate the schema")
@@ -206,11 +231,18 @@ func TestSelectRecord(t *testing.T) {
 
 func TestDeleteRecord(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	s := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{
+	c := instana.InitCollector(&instana.Options{
 		Service:     "go-sensor-test",
 		AgentClient: alwaysReadyClient{},
-	}, recorder))
-	defer instana.ShutdownSensor()
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	t.Run("Exec", func(t *testing.T) {
 		dsn, tearDownFn := setupEnv(t)
@@ -221,7 +253,8 @@ func TestDeleteRecord(t *testing.T) {
 			panic("failed to connect database")
 		}
 
-		instagorm.Instrument(db, s, dsn)
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
 
 		if err = db.AutoMigrate(&product{}); err != nil {
 			panic("failed to migrate the schema")
@@ -259,11 +292,18 @@ func TestDeleteRecord(t *testing.T) {
 
 func TestRawSQL(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	s := instana.NewSensorWithTracer(instana.NewTracerWithEverything(&instana.Options{
+	c := instana.InitCollector(&instana.Options{
 		Service:     "go-sensor-test",
 		AgentClient: alwaysReadyClient{},
-	}, recorder))
-	defer instana.ShutdownSensor()
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	t.Run("Exec", func(t *testing.T) {
 		dsn, tearDownFn := setupEnv(t)
@@ -274,7 +314,8 @@ func TestRawSQL(t *testing.T) {
 			panic("failed to connect database")
 		}
 
-		instagorm.Instrument(db, s, dsn)
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
 
 		if err = db.AutoMigrate(&product{}); err != nil {
 			panic("failed to migrate the schema")
@@ -294,7 +335,6 @@ func TestRawSQL(t *testing.T) {
 		assert.EqualValues(t, instana.ExitSpanKind, rawSQLSpan.Kind)
 		require.IsType(t, instana.SDKSpanData{}, rawSQLSpan.Data)
 
-		RawSqlOutput := "SELECT * FROM `products` WHERE code = ? AND `products`.`deleted_at` IS NULL ORDER BY `products`.`id` LIMIT 1"
 		data := rawSQLSpan.Data.(instana.SDKSpanData)
 		assert.Equal(t, instana.SDKSpanTags{
 			Name: "sdk.database",
@@ -304,7 +344,71 @@ func TestRawSQL(t *testing.T) {
 				"tags": ot.Tags{
 					"span.kind":    ext.SpanKindRPCClientEnum,
 					"db.instance":  dsn,
-					"db.statement": RawSqlOutput,
+					"db.statement": RAWSQL,
+					"db.type":      DB_TYPE,
+					"peer.address": dsn,
+				},
+			},
+		}, data.Tags)
+
+	})
+}
+
+func TestRow(t *testing.T) {
+	recorder := instana.NewTestRecorder()
+	c := instana.InitCollector(&instana.Options{
+		Service:     "go-sensor-test",
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.Tracer().StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
+
+	t.Run("Exec", func(t *testing.T) {
+		dsn, tearDownFn := setupEnv(t)
+		defer tearDownFn(t)
+
+		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+		if err != nil {
+			panic("failed to connect database")
+		}
+
+		db.Statement.Context = ctx
+		instagorm.Instrument(db, c, dsn)
+
+		if err = db.AutoMigrate(&product{}); err != nil {
+			panic("failed to migrate the schema")
+		}
+		require.NoError(t, err)
+
+		db.Create(&product{Code: "D42", Price: 100})
+
+		var p product
+		rw := db.Table("product").Where("code = ?", "D42").Select("code", "price").Row()
+		rw.Scan(&p)
+
+		spans := recorder.GetQueuedSpans()
+
+		rowSpan := spans[len(spans)-1]
+		assert.Equal(t, 0, rowSpan.Ec)
+		assert.EqualValues(t, instana.ExitSpanKind, rowSpan.Kind)
+		require.IsType(t, instana.SDKSpanData{}, rowSpan.Data)
+
+		data := rowSpan.Data.(instana.SDKSpanData)
+		assert.Equal(t, instana.SDKSpanTags{
+			Name: "sdk.database",
+			Type: "exit",
+			Custom: map[string]interface{}{
+				"baggage": map[string]string{"dbKey": "db"},
+				"tags": ot.Tags{
+					"span.kind":    ext.SpanKindRPCClientEnum,
+					"db.instance":  dsn,
+					"db.statement": ROW,
 					"db.type":      DB_TYPE,
 					"peer.address": dsn,
 				},

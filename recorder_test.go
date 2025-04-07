@@ -7,17 +7,23 @@ import (
 	"testing"
 
 	instana "github.com/instana/go-sensor"
+	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRecorderBasics(t *testing.T) {
-	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder)
-	defer instana.ShutdownSensor()
 
-	span := tracer.StartSpan("http-client")
+	recorder := instana.NewTestRecorder()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.StartSpan("parent-span")
+	span := c.StartSpan("http-client", ot.ChildOf(pSpan.Context()))
 	span.SetTag(string(ext.SpanKind), "exit")
 	span.SetTag("http.status", 200)
 	span.SetTag("http.url", "https://www.instana.com/product/")
@@ -32,10 +38,13 @@ func TestRecorderBasics(t *testing.T) {
 
 func TestRecorder_BatchSpan(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
-	tracer.StartSpan("test-span", instana.BatchSize(2)).Finish()
+	c.StartSpan("test-span", instana.BatchSize(2)).Finish()
 
 	spans := recorder.GetQueuedSpans()
 	require.Len(t, spans, 1)
@@ -46,10 +55,13 @@ func TestRecorder_BatchSpan(t *testing.T) {
 
 func TestRecorder_BatchSpan_Single(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
-	tracer.StartSpan("test-span", instana.BatchSize(1)).Finish()
+	c.StartSpan("test-span", instana.BatchSize(1)).Finish()
 
 	spans := recorder.GetQueuedSpans()
 	require.Len(t, spans, 1)

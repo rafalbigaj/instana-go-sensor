@@ -22,8 +22,8 @@ For detailed usage examples see [the documentation][godoc] or the following link
 - [Consumer_group example](./example_consumer_group_test.go)
 - [Consumer_example](./example_consumer_group_test.go)
 
-This instrumentation requires an instance of `instana.Sensor` to initialize spans and handle the trace context propagation.
-You can create a new instance of Instana sensor using `instana.NewSensor()`.
+This instrumentation requires an instance of [`instana.Collector`][Collector] to initialize spans and handle the trace context propagation.
+You can create a new instance of Instana collector using [`instana.InitCollector()`][InitCollector].
 
 `instasarama` provides a set of convenience wrappers for constructor functions exported by `github.com/IBM/sarama`. These
 wrappers are named the same way as their origins and use the same set of arguments. In most cases it's enough to replace
@@ -39,18 +39,18 @@ For more detailed example code please consult the [package documentation][godoc]
 To create an instrumented instance of `sarama.SyncProducer` from a list of broker addresses use [instasarama.NewSyncProducer()][NewSyncProducer]:
 
 ```go
-producer := instasarama.NewSyncProducer(brokers, config, sensor)
+producer := instasarama.NewSyncProducer(brokers, config, collector)
 ```
 
 [instasarama.NewSyncProducerFromClient()][NewSyncProducerFromClient] does the same, but from an existing `sarama.Client`:
 
 ```go
-producer := instasarama.NewSyncProducerFromClient(client, sensor)
+producer := instasarama.NewSyncProducerFromClient(client, collector)
 ```
 
 The wrapped producer takes care of trace context propagation by creating an exit span and injecting the trace context into each Kafka
 message headers. Since `github.com/IBM/sarama` does not use `context.Context`, which is a conventional way of passing the parent
-span in Instana Go sensor, the caller needs to inject the parent span context using [`instasarama.ProducerMessageWithSpan()`][ProducerMessageWithSpan]
+span in Instana Go collector, the caller needs to inject the parent span context using [`instasarama.ProducerMessageWithSpan()`][ProducerMessageWithSpan]
 before passing it to the wrapped producer.
 
 ### Instrumenting `sarama.AsyncProducer`
@@ -63,18 +63,18 @@ For more detailed example code please consult the [package documentation][godoc]
 To create an instrumented instance of `sarama.AsyncProducer` from a list of broker addresses use [instasarama.NewAsyncProducer()][NewAsyncProducer]:
 
 ```go
-producer := instasarama.NewAsyncProducer(brokers, config, sensor)
+producer := instasarama.NewAsyncProducer(brokers, config, collector)
 ```
 
 [instasarama.NewAsyncProducerFromClient()][NewAsyncProducerFromClient] does the same, but from an existing `sarama.Client`:
 
 ```go
-producer := instasarama.NewAsyncProducerFromClient(client, sensor)
+producer := instasarama.NewAsyncProducerFromClient(client, collector)
 ```
 
 The wrapped producer takes care of trace context propagation by creating an exit span and injecting the trace context into each Kafka
 message headers. Since `github.com/IBM/sarama` does not use `context.Context`, which is a conventional way of passing the parent
-span in Instana Go sensor, the caller needs to inject the parent span context using [`instasarama.ProducerMessageWithSpan()`][ProducerMessageWithSpan]
+span in Instana Go collector, the caller needs to inject the parent span context using [`instasarama.ProducerMessageWithSpan()`][ProducerMessageWithSpan]
 before passing it to the wrapped producer.
 
 ### Instrumenting `sarama.Consumer`
@@ -84,13 +84,13 @@ For more detailed example code please consult the [package documentation][godoc]
 To create an instrumented instance of `sarama.Consumer` from a list of broker addresses use [instasarama.NewConsumer()][NewConsumer]:
 
 ```go
-consumer := instasarama.NewConsumer(brokers, config, sensor)
+consumer := instasarama.NewConsumer(brokers, config, collector)
 ```
 
 [instasarama.NewConsumerFromClient()][NewConsumerFromClient] does the same, but from an existing `sarama.Client`:
 
 ```go
-consumer := instasarama.NewConsumerFromClient(client, sensor)
+consumer := instasarama.NewConsumerFromClient(client, collector)
 ```
 
 The wrapped consumer will pick up the existing trace context if found in message headers, start a new entry span and inject its context
@@ -107,7 +107,7 @@ into a wrapper that takes care of trace context extraction, creating an entry sp
 ```go
 var client sarama.ConsumerGroup
 
-consumer := instasarama.WrapConsumerGroupHandler(&Consumer{}, sensor)
+consumer := instasarama.WrapConsumerGroupHandler(&Consumer{}, collector)
 
 // use the wrapped consumer in the Consume() call
 for {
@@ -121,23 +121,13 @@ in the message handler to continue the trace.
 
 ### Working With Kafka Header Formats
 
-Since v1.2.0, the instrumentation supports Instana's trace correlation headers in both binary (legacy) and string (new) formats.
+Instana is currently changing how Kafka headers are handled. This change affects how Instana headers are propagated via a producer when a message is sent. 
 
-By default, both sets of headers (binary and string) will be added to messages. Versions prior to v1.2.0 will only add headers in the binary format.
+Starting from [instasarama](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instasarama) v1.24.0, binary headers are no longer used, and you can't set the header format using the environment variable (INSTANA_KAFKA_HEADER_FORMAT). The only available format now is 'string'.
 
-This change affects how Instana headers are propagated via a producer when a message is sent.
-Consumers will always look for the string headers first and fallback to the binary format if necessary.
+In versions between 1.2.0 and 1.24.0, Instana supports trace correlation headers in both 'binary'(old) and 'string'(new) formats. By default, messages in these versions will include both 'binary' and 'string' headers.
 
-In the future, the binary headers will be discontinued and only the headers in the string format will be considered.
-
-To choose a header format provide the `INSTANA_KAFKA_HEADER_FORMAT` environment variable to the application.
-The following are valid values:
-
-* `binary`: Producers will only add binary headers to Kafka messages.
-* `string`: Producers will only add string headers to Kafka messages.
-* `both`: Producers will add both sets of headers to Kafka messages.
-
-> If no environment variable is provided, or its value is empty or if it's not a valid value, Kafka headers will be treated as binary
+Versions before 1.2.0 will only use 'binary' headers.
 
 See the topic [Kafka header migration](https://www.ibm.com/docs/en/instana-observability/current?topic=references-kafka-header-migration) in Instana's documentation for more information.
 
@@ -151,3 +141,5 @@ See the topic [Kafka header migration](https://www.ibm.com/docs/en/instana-obser
 [WrapConsumerGroupHandler]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instasarama?tab=doc#WrapConsumerGroupHandler
 [ProducerMessageWithSpan]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instasarama?tab=doc#ProducerMessageWithSpan
 [SpanContextFromConsumerMessage]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instasarama?tab=doc#SpanContextFromConsumerMessage
+[Collector]: https://pkg.go.dev/github.com/instana/go-sensor#Collector
+[InitCollector]: https://pkg.go.dev/github.com/instana/go-sensor#InitCollector

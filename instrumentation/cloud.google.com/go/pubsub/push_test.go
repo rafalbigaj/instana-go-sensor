@@ -1,9 +1,6 @@
 // (c) Copyright IBM Corp. 2021
 // (c) Copyright Instana Inc. 2020
 
-//go:build go1.19
-// +build go1.19
-
 package pubsub_test
 
 import (
@@ -27,10 +24,11 @@ import (
 
 func TestTracingHandler(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	payload, err := ioutil.ReadFile("testdata/message.json")
 	require.NoError(t, err)
@@ -39,7 +37,7 @@ func TestTracingHandler(t *testing.T) {
 		numCalls int
 		reqSpan  opentracing.Span
 	)
-	h := pubsub.TracingHandlerFunc(sensor, "/", func(w http.ResponseWriter, req *http.Request) {
+	h := pubsub.TracingHandlerFunc(c, "/", func(w http.ResponseWriter, req *http.Request) {
 		numCalls++
 
 		var ok bool
@@ -91,16 +89,17 @@ func TestTracingHandler(t *testing.T) {
 
 func TestTracingHandlerFunc_TracePropagation(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	payload, err := ioutil.ReadFile("testdata/message_with_context.json")
 	require.NoError(t, err)
 
 	var numCalls int
-	h := pubsub.TracingHandlerFunc(sensor, "/", func(w http.ResponseWriter, req *http.Request) {
+	h := pubsub.TracingHandlerFunc(c, "/", func(w http.ResponseWriter, req *http.Request) {
 		numCalls++
 
 		_, ok := instana.SpanFromContext(req.Context())
@@ -149,13 +148,14 @@ func TestTracingHandlerFunc_TracePropagation(t *testing.T) {
 
 func TestTracingHandlerFunc_NotPubSub(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	var numCalls int
-	h := pubsub.TracingHandlerFunc(sensor, "/", func(w http.ResponseWriter, req *http.Request) {
+	h := pubsub.TracingHandlerFunc(c, "/", func(w http.ResponseWriter, req *http.Request) {
 		numCalls++
 
 		_, ok := instana.SpanFromContext(req.Context())

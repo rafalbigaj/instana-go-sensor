@@ -14,10 +14,10 @@ import (
 
 func TestSpanFromContext_WithActiveSpan(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{AgentClient: alwaysReadyClient{}, Recorder: recorder})
+	defer instana.ShutdownCollector()
 
-	span := tracer.StartSpan("test")
+	span := c.StartSpan("test")
 	ctx := instana.ContextWithSpan(context.Background(), span)
 
 	sp, ok := instana.SpanFromContext(ctx)
@@ -26,6 +26,7 @@ func TestSpanFromContext_WithActiveSpan(t *testing.T) {
 }
 
 func TestSpanFromContext_NoActiveSpan(t *testing.T) {
-	_, ok := instana.SpanFromContext(context.Background())
+	sp, ok := instana.SpanFromContext(context.Background())
+	assert.Equal(t, sp, nil)
 	assert.False(t, ok)
 }

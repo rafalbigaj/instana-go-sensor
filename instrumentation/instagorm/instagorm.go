@@ -1,7 +1,7 @@
 // (c) Copyright IBM Corp. 2023
 
-//go:build go1.16
-// +build go1.16
+//go:build go1.18
+// +build go1.18
 
 // Package instagorm provides instrumentation for the gorm library.
 package instagorm
@@ -77,10 +77,10 @@ func (wdB *wrappedDB) registerQueryCallbacks() {
 }
 
 func (wdB *wrappedDB) registerRowCallbacks() {
-	wdB.logError(wdB.Callback().Raw().Before("gorm:row").Register("instagorm:before_row",
+	wdB.logError(wdB.Callback().Row().Before("gorm:row").Register("instagorm:before_row",
 		preOpCb(wdB)))
 
-	wdB.logError(wdB.Callback().Raw().After("gorm:row").Register("instagorm:after_row",
+	wdB.logError(wdB.Callback().Row().After("gorm:row").Register("instagorm:after_row",
 		postOpCb()))
 }
 

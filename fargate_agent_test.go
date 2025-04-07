@@ -7,6 +7,7 @@
 package instana_test
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -50,12 +51,13 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to initialize serverless agent: %s", err)
 	}
 
-	instana.InitSensor(instana.DefaultOptions())
+	instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
 	os.Exit(m.Run())
 }
 
-func TestFargateAgent_SendMetrics(t *testing.T) {
+func TestIntegration_FargateAgent_SendMetrics(t *testing.T) {
 	defer agent.Reset()
 
 	require.Eventually(t, func() bool { return len(agent.Bundles) > 0 }, 2*time.Second, 500*time.Millisecond)
@@ -203,12 +205,13 @@ func TestFargateAgent_SendMetrics(t *testing.T) {
 	})
 }
 
-func TestFargateAgent_SendSpans(t *testing.T) {
+func TestIntegration_FargateAgent_SendSpans(t *testing.T) {
 	defer agent.Reset()
 
-	sensor := instana.NewSensor("testing")
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
 
-	sp := sensor.Tracer().StartSpan("entry")
+	sp := c.Tracer().StartSpan("entry")
 	sp.SetTag("value", "42")
 	sp.Finish()
 
@@ -243,6 +246,22 @@ func TestFargateAgent_SendSpans(t *testing.T) {
 
 	require.Len(t, spans, 1)
 	assert.JSONEq(t, `{"hl": true, "cp": "aws", "e": "arn:aws:ecs:us-east-2:012345678910:task/9781c248-0edd-4cdb-9a93-f63cb662a5d3::nginx-curl"}`, string(spans[0]["f"]))
+}
+
+func TestIntegration_FargateAgent_FlushSpans(t *testing.T) {
+	defer agent.Reset()
+
+	c := instana.InitCollector(instana.DefaultOptions())
+	defer instana.ShutdownCollector()
+
+	sp := c.Tracer().StartSpan("entry")
+	sp.SetTag("value", "42")
+	sp.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, c.Flush(ctx))
 }
 
 func setupAWSFargateEnv() func() {

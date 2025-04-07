@@ -1,9 +1,6 @@
 // (c) Copyright IBM Corp. 2021
 // (c) Copyright Instana Inc. 2020
 
-//go:build go1.19
-// +build go1.19
-
 package pubsub_test
 
 import (
@@ -22,8 +19,11 @@ import (
 
 func TestTopic_Publish(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	srv, conn, teardown, err := setupMockServer()
 	require.NoError(t, err)
@@ -37,12 +37,12 @@ func TestTopic_Publish(t *testing.T) {
 	client, err := pubsub.NewClient(
 		context.Background(),
 		"test-project",
-		instana.NewSensorWithTracer(tracer),
+		c,
 		option.WithGRPCConn(conn),
 	)
 	require.NoError(t, err)
 
-	parent := tracer.StartSpan("testing")
+	parent := c.StartSpan("testing")
 
 	ctx := instana.ContextWithSpan(context.Background(), parent)
 	res := client.Topic("test-topic").Publish(ctx, &pubsub.Message{
@@ -107,33 +107,50 @@ func TestTopic_Publish(t *testing.T) {
 
 func TestTopic_Publish_NoTrace(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	tracer := instana.NewTracerWithEverything(instana.DefaultOptions(), recorder)
-	defer instana.ShutdownSensor()
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
+
+	pSpan := c.StartSpan("parent-span")
+	ctx := context.Background()
+	if pSpan != nil {
+		ctx = instana.ContextWithSpan(ctx, pSpan)
+	}
 
 	srv, conn, teardown, err := setupMockServer()
 	require.NoError(t, err)
 	defer teardown()
 
-	srv.GServer.CreateTopic(context.Background(), &pb.Topic{
+	srv.GServer.CreateTopic(ctx, &pb.Topic{
 		Name: "projects/test-project/topics/test-topic",
 	})
 
 	client, err := pubsub.NewClient(
-		context.Background(),
+		ctx,
 		"test-project",
-		instana.NewSensorWithTracer(tracer),
+		c,
 		option.WithGRPCConn(conn),
 	)
 	require.NoError(t, err)
 
-	res := client.Topic("test-topic").Publish(context.Background(), &pubsub.Message{
+	res := client.Topic("test-topic").Publish(ctx, &pubsub.Message{
 		Data: []byte("message data"),
 		Attributes: map[string]string{
 			"key1": "value1",
 		},
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	require.Eventually(t, func() bool {
+		return recorder.QueuedSpansCount() == 1
+	}, 250*time.Millisecond, 25*time.Millisecond)
+
+	spans := recorder.GetQueuedSpans()
+	require.Len(t, spans, 1)
+	gcpsSpan := spans[0]
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	msgID, err := res.Get(ctx)
@@ -143,6 +160,9 @@ func TestTopic_Publish_NoTrace(t *testing.T) {
 	require.NotNil(t, msg)
 
 	assert.Equal(t, map[string]string{
-		"key1": "value1",
+		"x-instana-t": instana.FormatID(gcpsSpan.TraceID),
+		"x-instana-s": instana.FormatID(gcpsSpan.SpanID),
+		"x-instana-l": "1",
+		"key1":        "value1",
 	}, msg.Attributes)
 }

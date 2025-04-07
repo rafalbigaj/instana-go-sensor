@@ -1,7 +1,7 @@
 // (c) Copyright IBM Corp. 2023
 
-//go:build go1.16
-// +build go1.16
+//go:build go1.18
+// +build go1.18
 
 package instagorm_test
 
@@ -13,7 +13,9 @@ import (
 )
 
 func Example() {
-	s := instana.NewSensor("go-sensor-gorm")
+	s := instana.InitCollector(&instana.Options{
+		Service: "go-sensor-gorm",
+	})
 
 	dsn := "<DSN information for database>"
 

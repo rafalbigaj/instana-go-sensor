@@ -22,11 +22,13 @@ const (
 
 func TestDynamoDBGetObjectWithError(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
-	ps := sensor.Tracer().StartSpan("aws-parent-dynamodb-span")
+	ps := c.Tracer().StartSpan("aws-parent-dynamodb-span")
 
 	ctx := instana.ContextWithSpan(context.TODO(), ps)
 
@@ -35,7 +37,7 @@ func TestDynamoDBGetObjectWithError(t *testing.T) {
 
 	cfg = applyTestingChanges(cfg)
 
-	instaawsv2.Instrument(sensor, &cfg)
+	instaawsv2.Instrument(c, &cfg)
 
 	ddClient := dynamodb.NewFromConfig(cfg)
 	bucket := "dynamodb-test-bucket"
@@ -47,7 +49,7 @@ func TestDynamoDBGetObjectWithError(t *testing.T) {
 		Key:       movie.GetKey(),
 	})
 
-	assert.Error(t, err) //error is fine as we are more interested in the span details. Mocking the response data should solve this.
+	assert.NoError(t, err)
 
 	ps.Finish()
 
@@ -182,11 +184,13 @@ func TestDynamoDBMonitoredOperations(t *testing.T) {
 	for name, testcase := range testcases {
 		t.Run(name, func(t *testing.T) {
 			recorder := instana.NewTestRecorder()
-			sensor := instana.NewSensorWithTracer(
-				instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-			)
+			c := instana.InitCollector(&instana.Options{
+				AgentClient: alwaysReadyClient{},
+				Recorder:    recorder,
+			})
+			defer instana.ShutdownCollector()
 
-			ps := sensor.Tracer().StartSpan("aws-parent-dynamodb-span")
+			ps := c.Tracer().StartSpan("aws-parent-dynamodb-span")
 
 			ctx := instana.ContextWithSpan(context.TODO(), ps)
 
@@ -195,13 +199,13 @@ func TestDynamoDBMonitoredOperations(t *testing.T) {
 
 			cfg = applyTestingChanges(cfg)
 
-			instaawsv2.Instrument(sensor, &cfg)
+			instaawsv2.Instrument(c, &cfg)
 
 			ddClient := dynamodb.NewFromConfig(cfg)
 
 			_, err = testcase.MonitoredFunc(ctx, ddClient)
 
-			assert.Error(t, err) //error is fine as we are more interested in the span details. Mocking the response data should solve this.
+			assert.NoError(t, err)
 
 			ps.Finish()
 
@@ -220,9 +224,11 @@ func TestDynamoDBMonitoredOperations(t *testing.T) {
 
 func TestDynamoDBNoParentSpan(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	ctx := context.TODO()
 
@@ -231,7 +237,7 @@ func TestDynamoDBNoParentSpan(t *testing.T) {
 
 	cfg = applyTestingChanges(cfg)
 
-	instaawsv2.Instrument(sensor, &cfg)
+	instaawsv2.Instrument(c, &cfg)
 
 	ddClient := dynamodb.NewFromConfig(cfg)
 	bucket := "dynamodb-test-bucket"
@@ -243,7 +249,7 @@ func TestDynamoDBNoParentSpan(t *testing.T) {
 		Key:       movie.GetKey(),
 	})
 
-	assert.Error(t, err) //error is fine as we are more interested in the span details. Mocking the response data should solve this.
+	assert.NoError(t, err)
 
 	recordedSpans := recorder.GetQueuedSpans()
 	assert.Equal(t, 0, len(recordedSpans))
@@ -251,18 +257,19 @@ func TestDynamoDBNoParentSpan(t *testing.T) {
 
 func TestDynamoDBUnMonitoredMethod(t *testing.T) {
 	recorder := instana.NewTestRecorder()
-	sensor := instana.NewSensorWithTracer(
-		instana.NewTracerWithEverything(&instana.Options{AgentClient: alwaysReadyClient{}}, recorder),
-	)
+	c := instana.InitCollector(&instana.Options{
+		AgentClient: alwaysReadyClient{},
+		Recorder:    recorder,
+	})
+	defer instana.ShutdownCollector()
 
 	ctx := context.TODO()
-
 	cfg, err := config.LoadDefaultConfig(ctx)
 	assert.NoError(t, err)
 
 	cfg = applyTestingChanges(cfg)
 
-	instaawsv2.Instrument(sensor, &cfg)
+	instaawsv2.Instrument(c, &cfg)
 
 	ddClient := dynamodb.NewFromConfig(cfg)
 	backupName := "dynamodb-test-backup"
@@ -273,7 +280,7 @@ func TestDynamoDBUnMonitoredMethod(t *testing.T) {
 		TableName:  &tableName,
 	})
 
-	assert.Error(t, err) //error is fine as we are more interested in the span details. Mocking the response data should solve this.
+	assert.NoError(t, err)
 
 	recordedSpans := recorder.GetQueuedSpans()
 	assert.Equal(t, 0, len(recordedSpans))

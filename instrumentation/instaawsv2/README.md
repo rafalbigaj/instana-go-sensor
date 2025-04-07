@@ -10,6 +10,10 @@ This module contains the code for instrumenting AWS APIs which are based on the 
 * [SNS](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/sns)
 * [Lambda](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/lambda)
 
+> [!IMPORTANT]
+> From v0.3.0 onwards, this instrumentation module requires Go v1.19 as the minimum version.
+
+
 ## Installation
 
 ```bash
@@ -57,3 +61,4 @@ Hence, to avoid collisions, it is recommended to avoid these keys in your applic
 [SpanContextFromSQSMessage]: https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaawsv2?tab=doc#SpanContextFromSQSMessage
 [aws-sdk-go-v2-github]: https://github.com/aws/aws-sdk-go-v2
 [aws-config]: https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/config#Config
+

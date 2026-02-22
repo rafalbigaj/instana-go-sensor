@@ -1,12 +1,14 @@
 module github.com/instana/go-sensor/instrumentation/instagrpc
 
-go 1.23
+go 1.24.0
+
+toolchain go1.24.12
 
 require (
 	github.com/instana/go-sensor v1.67.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/stretchr/testify v1.8.4
-	google.golang.org/grpc v1.70.0
+	google.golang.org/grpc v1.79.1
 )
 
 require (
@@ -14,10 +16,10 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/looplab/fsm v1.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241202173237-19429a94021a // indirect
-	google.golang.org/protobuf v1.35.2 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

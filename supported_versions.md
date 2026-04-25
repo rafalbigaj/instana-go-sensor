@@ -16,7 +16,7 @@
 | 14 | Databases | [gocb](https://pkg.go.dev/github.com/couchbase/gocb/v2) | [instagocb](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instagocb) | v2.6.5 | v2.12.2 |
 | 15 | Messaging | [pubsub](https://pkg.go.dev/cloud.google.com/go/pubsub) | [instapubsub](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/cloud.google.com/go/pubsub) | v1.3.1 | v1.50.2 |
 | 16 | Messaging | [sarama](https://pkg.go.dev/github.com/IBM/sarama) | [instasarama](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instasarama) | v1.19.0 | v1.48.0 |
-| 17 | Messaging | [amqp091-go](https://pkg.go.dev/github.com/rabbitmq/amqp091-go) | [instaamqp091](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaamqp091) | v1.5.0 | v1.10.0 |
+| 17 | Messaging | [amqp091-go](https://pkg.go.dev/github.com/rabbitmq/amqp091-go) | [instaamqp091](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaamqp091) | v1.5.0 | v1.11.0 |
 | 18 | GraphQL | [graphql](https://pkg.go.dev/github.com/graphql-go/graphql) | [instagraphql](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instagraphql) | v0.8.0 | v0.8.1 |
 | 19 | Other | [storage](https://pkg.go.dev/cloud.google.com/go/storage) | [storage](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/cloud.google.com/go/storage) | v1.7.0 | v1.50.0 |
 | 20 | Other | [aws-sdk-go](https://pkg.go.dev/github.com/aws/aws-sdk-go) | [instaawssdk](https://pkg.go.dev/github.com/instana/go-sensor/instrumentation/instaawssdk) | v1.8.0 | v1.55.6 |
